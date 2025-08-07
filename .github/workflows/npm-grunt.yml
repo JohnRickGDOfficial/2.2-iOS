@@ -10,7 +10,7 @@ on:
         description: "GDPS URL (33 CHARACTERS)"
         required: true
       bundle:
-        description: "BUDNLE ID (23 CHARACTERS)"
+        description: "Bundle ID (23 CHARACTERS)"
         required: true
 
 jobs:
@@ -22,30 +22,40 @@ jobs:
         node-version: [18.x]
 
     steps:
-    - uses: actions/checkout@v4
+      - name: 📦 Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
-      with:
-        node-version: ${{ matrix.node-version }}
+      - name: 🧰 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
 
-    - name: Build
-      run: |
-        wget -L https://files.141412.xyz/r/base.ipa -O base.ipa
-        npm install
-        echo name=${{ inputs.name }} > .env
-        echo bundle=${{ inputs.bundle }} >> .env
-        echo url=${{ inputs.url }} >> .env
-        node index.js
-        mv ${{ inputs.name }}.ipa output.ipa
-    - name: Upload a Build Artifact
-      uses: actions/upload-artifact@v4.3.4
-      with:
-        # Artifact name
-        name: "IPA Output" # optional, default is artifact
-        # A file, directory or wildcard pattern that describes what to upload
-        path: "output.ipa"
-        # The desired behavior if no files are found using the provided path.
-        if-no-files-found: warn
-          
-    
+      - name: 🔽 Download Base IPA
+        run: |
+          set -e
+          wget -L https://files.141412.xyz/r/base.ipa -O base.ipa
+
+      - name: 📁 Install Node.js Dependencies
+        run: npm install
+
+      - name: 📝 Create .env File
+        run: |
+          echo "name=${{ inputs.name }}" > .env
+          echo "bundle=${{ inputs.bundle }}" >> .env
+          echo "url=${{ inputs.url }}" >> .env
+
+      - name: 🏗️ Run Build Script
+        run: |
+          node index.js
+          mv "${{ inputs.name }}.ipa" output.ipa
+
+      - name: 📤 Upload Output IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: "IPA Output - ${{ inputs.name }}"
+          path: output.ipa
+          if-no-files-found: error
+
+      - name: ✅ Summary
+        run: |
+          echo "IPA for **${{ inputs.name }}** built and uploaded successfully." >> $GITHUB_STEP_SUMMARY
