@@ -1,45 +1,66 @@
-// https://gist.github.com/falkolab/f160f446d0bda8a69172
+const { parse } = require('url');
+const https = require('https');
+const fs = require('fs');
+const { basename } = require('path');
 
-const { parse } = require('url')
-const http = require('https')
-const fs = require('fs')
-const { basename } = require('path')
-
-const TIMEOUT = 10000
+const TIMEOUT = 10000; // 10 seconds
 
 const BASE_IPA_NAME = process.argv.includes("--icreate") ? "icreate.ipa" : "base.ipa";
 
-module.exports = function(url, path) {
-  const uri = parse(url)
+/**
+ * Downloads a file from a given URL and saves it to the given path.
+ * @param {string} url - The URL to download from.
+ * @param {string} path - The destination path for the downloaded file.
+ * @returns {Promise<void>}
+ */
+module.exports = function downloadFile(url, path) {
+  const uri = parse(url);
   if (!path) {
-    path = basename(uri.path)
+    path = basename(uri.path);
   }
-  const file = fs.createWriteStream(path)
 
-  return new Promise(function(resolve, reject) {
-    const request = http.get(uri.href).on('response', function(res) {
-      const len = parseInt(res.headers['content-length'], 10)
-      let downloaded = 0
-      let percent = 0
-      res
-        .on('data', function(chunk) {
-          file.write(chunk)
-          downloaded += chunk.length
-          percent = (100.0 * downloaded / len).toFixed(2)
-          process.stdout.write(`Downloading ${BASE_IPA_NAME} - ${percent}%\r`)
-        })
-        .on('end', function() {
-          file.end()
-          console.log(`Downloaded!`)
-          resolve()
-        })
-        .on('error', function (err) {
-          reject(err)
-        })
-    })
-    request.setTimeout(TIMEOUT, function() {
-      request.abort()
-      reject(new Error(`request timeout after ${TIMEOUT / 1000.0}s`))
-    })
-  })
-}
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(path);
+
+    const request = https.get(uri.href, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Download failed. HTTP Status: ${res.statusCode}`));
+        return;
+      }
+
+      const len = parseInt(res.headers['content-length'], 10);
+      let downloaded = 0;
+      let percent = 0;
+
+      res.on('data', (chunk) => {
+        file.write(chunk);
+        downloaded += chunk.length;
+        percent = ((100.0 * downloaded) / len).toFixed(2);
+        process.stdout.write(`Downloading ${BASE_IPA_NAME} - ${percent}%\r`);
+      });
+
+      res.on('end', () => {
+        file.end();
+        console.log(`\n✅ ${BASE_IPA_NAME} downloaded successfully!`);
+        resolve();
+      });
+
+      res.on('error', (err) => {
+        file.close();
+        reject(err);
+      });
+    });
+
+    request.on('timeout', () => {
+      request.abort();
+      reject(new Error(`❌ Request timed out after ${TIMEOUT / 1000}s`));
+    });
+
+    request.on('error', (err) => {
+      file.close();
+      reject(err);
+    });
+
+    request.setTimeout(TIMEOUT);
+  });
+};
